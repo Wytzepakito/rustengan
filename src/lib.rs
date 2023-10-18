@@ -1,7 +1,6 @@
-use std::io::{StdoutLock, Write};
-
-use anyhow::{bail, Context};
+use anyhow::Context;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::io::StdoutLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message<Payload> {
@@ -26,51 +25,9 @@ pub struct Init {
     pub node_ids: Vec<String>,
 }
 
-struct EchoNode {
-    id: usize,
-}
-
-impl EchoNode {
-    pub fn step(&mut self, input: Message, output: &mut StdoutLock) -> anyhow::Result<()> {
-        match input.body.payload {
-            Payload::Init { .. } => {
-                let reply = Message {
-                    src: input.dst,
-                    dst: input.src,
-                    body: Body {
-                        id: Some(self.id),
-                        in_reply_to: input.body.id,
-                        payload: Payload::InitOk,
-                    },
-                };
-                serde_json::to_writer(&mut *output, &reply)
-                    .context("serialize response to init")?;
-                output.write_all(b"\n").context("write trailing newline")?;
-                self.id += 1;
-            }
-            Payload::Echo { echo } => {
-                let reply = Message {
-                    src: input.dst,
-                    dst: input.src,
-                    body: Body {
-                        id: Some(self.id),
-                        in_reply_to: input.body.id,
-                        payload: Payload::EchoOk { echo: echo },
-                    },
-                };
-                serde_json::to_writer(&mut *output, &reply)
-                    .context("serialize response to init")?;
-                output.write_all(b"\n").context("write trailing newline")?;
-                self.id += 1;
-            }
-            Payload::InitOk { .. } => bail!("received init_ok message"),
-            Payload::EchoOk { .. } => {}
-        }
-        Ok(())
-    }
-}
 
 pub trait Node<Payload> {
+    fn from_init(init: Init) -> anyhow::Result<Self> where Self:Sized;
     fn step(&mut self, input: Message<Payload>, output: &mut StdoutLock) -> anyhow::Result<()>;
 }
 
@@ -80,11 +37,10 @@ where
     Payload: DeserializeOwned,
 {
     let stdin = std::io::stdin().lock();
-    let inputs = serde_json::Deserializer::from_reader(stdin).into_iter::<Message>();
+    let inputs = serde_json::Deserializer::from_reader(stdin).into_iter::<Message<Payload>>();
 
     let mut stdout = std::io::stdout().lock();
 
-    let mut state = EchoNode { id: 0 };
 
     for input in inputs {
         let input = input.context("Maelstrom input from STDIN could not be deserialized")?;
