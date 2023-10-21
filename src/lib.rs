@@ -31,7 +31,7 @@ pub trait Node<Payload> {
     fn step(&mut self, input: Message<Payload>, output: &mut StdoutLock) -> anyhow::Result<()>;
 }
 
-pub fn main_loop<S, Payload>(mut state: S) -> anyhow::Result<()>
+pub fn main_loop<S, Payload>() -> anyhow::Result<()>
 where
     S: Node<Payload>,
     Payload: DeserializeOwned,
